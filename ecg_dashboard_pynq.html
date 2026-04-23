@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ECG Monitor — ADS1299 · PYNQ-Z2</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#020c0e; color:#00ffc8;
+  font-family:'Courier New',monospace;
+  height:100vh; display:flex; flex-direction:column; overflow:hidden;
+}
+#header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:8px 16px; border-bottom:1px solid #0a3a3a; background:#030f12; flex-shrink:0;
+}
+.htitle { font-size:18px; letter-spacing:4px; color:#00ffc8; }
+.hsub   { font-size:11px; color:#3a7070; letter-spacing:2px; }
+.hright { display:flex; align-items:center; gap:16px; }
+#sDot { width:10px;height:10px;border-radius:50%;background:#ffcc00;box-shadow:0 0 8px #ffcc00;display:inline-block;transition:all .3s; }
+#sDot.live{background:#00ffc8;box-shadow:0 0 12px #00ffc8;}
+#sDot.err{background:#ff4f4f;box-shadow:0 0 8px #ff4f4f;}
+#clock{font-size:20px;color:#00ffc8;letter-spacing:2px;}
+#body{display:flex;flex:1;min-height:0;}
+
+/* LEFT */
+#left{width:175px;flex-shrink:0;border-right:1px solid #0a3a3a;padding:10px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;}
+.vtbox{border:1px solid #0a3a3a;border-radius:3px;padding:8px;text-align:center;background:#030f12;}
+.vtlabel{font-size:10px;color:#3a7070;letter-spacing:2px;margin-bottom:3px;}
+.vtval{font-size:28px;color:#00ffc8;text-shadow:0 0 16px rgba(0,255,200,.5);line-height:1;}
+.vtval.warn{color:#ff4f4f;text-shadow:0 0 16px rgba(255,79,79,.5);}
+.vtunit{font-size:11px;color:#3a7070;margin-top:2px;}
+.sec{font-size:10px;color:#3a7070;letter-spacing:2px;border-bottom:1px solid #0a3a3a;padding-bottom:3px;margin-top:4px;}
+.bgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+button{padding:6px;border:1px solid #0a3a3a;background:transparent;color:#3a7070;font-family:'Courier New',monospace;font-size:11px;letter-spacing:1px;cursor:pointer;border-radius:2px;transition:all .15s;}
+button:hover{border-color:#00ffc8;color:#00ffc8;background:rgba(0,255,200,.06);}
+button.on{border-color:#00ffc8;color:#00ffc8;background:rgba(0,255,200,.12);}
+
+/* CENTER */
+#center{flex:1;display:flex;flex-direction:column;min-width:0;}
+#tbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 12px;border-bottom:1px solid #0a3a3a;background:#030f12;flex-shrink:0;}
+.tgrp{display:flex;gap:4px;align-items:center;}
+.tlbl{font-size:10px;color:#3a7070;letter-spacing:1px;margin-right:2px;}
+#cwrap{flex:1;position:relative;min-height:0;background:#030f12;}
+canvas{position:absolute;top:0;left:0;display:block;}
+#sbar{display:flex;gap:20px;align-items:center;padding:5px 12px;border-top:1px solid #0a3a3a;background:#030f12;flex-shrink:0;font-size:11px;color:#3a7070;letter-spacing:1px;}
+#sbar span{color:#00ffc8;}
+
+/* RIGHT */
+#right{width:185px;flex-shrink:0;border-left:1px solid #0a3a3a;padding:10px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;}
+.frow{display:flex;justify-content:space-between;align-items:center;padding:5px 7px;border:1px solid #0a3a3a;border-radius:2px;cursor:pointer;transition:all .15s;}
+.frow.on{border-color:#00ffc8;background:rgba(0,255,200,.05);}
+.fname{font-size:11px;letter-spacing:1px;color:#3a7070;}
+.fname.on{color:#00ffc8;}
+.ffreq{font-size:10px;color:#3a7070;}
+.pill{width:26px;height:14px;border-radius:7px;background:#0a3a3a;position:relative;transition:background .2s;flex-shrink:0;}
+.pill.on{background:#00ffc8;}
+.pill::after{content:'';position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:50%;background:#020c0e;transition:transform .2s;}
+.pill.on::after{transform:translateX(12px);}
+.glbl{display:flex;justify-content:space-between;font-size:11px;color:#3a7070;margin-bottom:6px;}
+.gval{color:#00ffc8;}
+input[type=range]{-webkit-appearance:none;width:100%;height:2px;background:#0a3a3a;border-radius:2px;outline:none;cursor:pointer;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;background:#00ffc8;border-radius:50%;box-shadow:0 0 6px #00ffc8;}
+
+/* Connect section */
+.conn-box{border:1px solid #0a3a3a;border-radius:3px;padding:8px;background:#030f12;}
+.conn-label{font-size:10px;color:#3a7070;letter-spacing:2px;margin-bottom:6px;}
+.conn-input{width:100%;background:#010809;border:1px solid #0a3a3a;color:#00ffc8;font-family:'Courier New',monospace;font-size:11px;padding:4px 6px;border-radius:2px;outline:none;margin-bottom:4px;}
+.conn-input:focus{border-color:#00ffc8;}
+#cBtn{width:100%;padding:9px;border:1px solid #00ffc8;background:rgba(0,255,200,.08);color:#00ffc8;font-size:12px;letter-spacing:2px;cursor:pointer;border-radius:2px;font-family:'Courier New',monospace;transition:all .2s;margin-top:4px;}
+#cBtn:hover{background:rgba(0,255,200,.18);}
+#cBtn.disc{border-color:#ff4f4f;color:#ff4f4f;background:rgba(255,79,79,.08);}
+#cBtn.disc:hover{background:rgba(255,79,79,.18);}
+
+#logBox{background:#010809;border:1px solid #0a3a3a;border-radius:2px;padding:6px;height:120px;overflow-y:auto;font-size:10px;line-height:1.6;color:#3a7070;}
+#logBox .l{color:#00ffc8;} #logBox .w{color:#ff4f4f;} #logBox .i{color:#00b8ff;}
+
+/* Status bar */
+#connStatus{font-size:10px;color:#3a7070;text-align:center;padding:3px;border:1px solid #0a3a3a;border-radius:2px;margin-top:2px;}
+#connStatus.ok{color:#00ffc8;border-color:#0a3a3a;}
+#connStatus.err{color:#ff4f4f;border-color:#ff4f4f;}
+
+.gain-info{font-size:10px;color:#3a7070;line-height:1.6;margin-top:2px;}
+.gain-info b{color:#00ffc8;}
+
+/* Save CSV button */
+#saveBtn{width:100%;padding:7px;border:1px solid #00b8ff;background:rgba(0,184,255,.08);color:#00b8ff;font-size:11px;letter-spacing:1px;cursor:pointer;border-radius:2px;font-family:'Courier New',monospace;transition:all .2s;}
+#saveBtn:hover{background:rgba(0,184,255,.18);}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div>
+    <div class="htitle">♥ CARDIO·SCAN</div>
+    <div class="hsub">ADS1299 · NIELIT · PYNQ-Z2 · ARDUINO HDR</div>
+  </div>
+  <div class="hright">
+    <div id="sDot"></div>
+    <span id="sLbl" style="font-size:12px;color:#3a7070;letter-spacing:1px">DEMO MODE</span>
+    <span id="clock">00:00:00</span>
+  </div>
+</div>
+
+<div id="body">
+  <!-- LEFT -->
+  <div id="left">
+    <div class="sec">VITALS</div>
+    <div class="vtbox">
+      <div class="vtlabel">HEART RATE</div>
+      <div class="vtval" id="vBpm">--</div>
+      <div class="vtunit">BPM</div>
+    </div>
+    <div class="vtbox">
+      <div class="vtlabel">AMPLITUDE</div>
+      <div class="vtval" id="vAmp" style="font-size:20px">--</div>
+      <div class="vtunit">µV p-p</div>
+    </div>
+    <div class="vtbox">
+      <div class="vtlabel">RR INTERVAL</div>
+      <div class="vtval" id="vRR" style="font-size:20px">--</div>
+      <div class="vtunit">ms</div>
+    </div>
+    <div class="vtbox">
+      <div class="vtlabel">SNR</div>
+      <div class="vtval" id="vSNR" style="font-size:20px">--</div>
+      <div class="vtunit">dB</div>
+    </div>
+    <div class="sec">VIEW</div>
+    <div class="bgrid">
+      <button class="on" id="bSingle" onclick="setView('single',this)">SINGLE</button>
+      <button id="bFFT" onclick="setView('fft',this)">FFT</button>
+      <button id="bPause" onclick="doPause()">⏸ PAUSE</button>
+      <button onclick="doClear()" style="color:#ff6b35;border-color:#ff6b35">✕ CLEAR</button>
+    </div>
+    <div class="sec">SCALE</div>
+    <div class="bgrid">
+      <button onclick="adjScale(2,this)">×2</button>
+      <button class="on" onclick="adjScale(1,this)" id="bS1">AUTO</button>
+      <button onclick="adjScale(0.5,this)">÷2</button>
+      <button onclick="adjScale(0.25,this)">÷4</button>
+    </div>
+  </div>
+
+  <!-- CENTER -->
+  <div id="center">
+    <div id="tbar">
+      <div class="tgrp">
+        <span class="tlbl">SOURCE:</span>
+        <button class="on" id="bDemo" onclick="srcDemo(this)">DEMO</button>
+        <button id="bPynq" onclick="srcPynq(this)">PYNQ LIVE</button>
+      </div>
+      <div class="tgrp">
+        <span class="tlbl" id="scaleInfo" style="color:#00ffc8;font-size:11px">AUTO SCALE</span>
+      </div>
+      <div class="tgrp" style="margin-left:auto">
+        <span class="tlbl">POLL:</span>
+        <span id="pollRate" style="color:#00ffc8;font-size:11px">-- ms</span>
+      </div>
+    </div>
+    <div id="cwrap"><canvas id="cvs"></canvas></div>
+    <div id="sbar">
+      SAMPLES: <span id="sSamp">0</span>
+      &nbsp; BUF: <span id="sBuf">0</span>
+      &nbsp; P-P: <span id="sPP">-- ms</span>
+      &nbsp; RAW: <span id="sRaw">-- µV</span>
+      &nbsp; PYNQ TOTAL: <span id="sPynqTotal">--</span>
+      <div style="flex:1"></div>
+      FILTERS: <span id="sFilt">HP · LP · NOTCH · DC</span>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div id="right">
+    <div class="sec">PYNQ-Z2 CONNECTION</div>
+    <div class="conn-box">
+      <div class="conn-label">PYNQ IP ADDRESS</div>
+      <input class="conn-input" id="pynqIP" type="text" value="192.168.2.99" placeholder="192.168.2.99">
+      <div class="conn-label" style="margin-top:4px">PORT</div>
+      <input class="conn-input" id="pynqPort" type="text" value="8080" placeholder="8080">
+      <button id="cBtn" onclick="togglePynq()">⚡ CONNECT PYNQ</button>
+      <div id="connStatus">● DISCONNECTED</div>
+    </div>
+    <div style="font-size:10px;color:#3a7070;line-height:1.7;">
+      Run <b style="color:#00ffc8">ecg_monitor.py</b> on<br>
+      PYNQ first, then click<br>
+      CONNECT. PYNQ must be<br>
+      reachable on your LAN.
+    </div>
+
+    <div class="sec">FILTERS</div>
+    <div class="frow on" id="fr-hp"    onclick="togF('hp')">
+      <span class="fname on" id="fn-hp">HIGH-PASS</span>
+      <span class="ffreq">0.5Hz</span>
+      <div class="pill on" id="fp-hp"></div>
+    </div>
+    <div class="frow on" id="fr-lp"    onclick="togF('lp')">
+      <span class="fname on" id="fn-lp">LOW-PASS</span>
+      <span class="ffreq">40Hz</span>
+      <div class="pill on" id="fp-lp"></div>
+    </div>
+    <div class="frow on" id="fr-notch" onclick="togF('notch')">
+      <span class="fname on" id="fn-notch">NOTCH</span>
+      <span class="ffreq">50Hz</span>
+      <div class="pill on" id="fp-notch"></div>
+    </div>
+    <div class="frow on" id="fr-dc"    onclick="togF('dc')">
+      <span class="fname on" id="fn-dc">BASELINE</span>
+      <span class="ffreq">DC</span>
+      <div class="pill on" id="fp-dc"></div>
+    </div>
+
+    <div class="sec">MANUAL GAIN</div>
+    <div>
+      <div class="glbl">GAIN <span class="gval" id="gLbl">1.0×</span></div>
+      <input type="range" min="1" max="100" value="10" id="gSlide"
+        oninput="manualGain=this.value/10;document.getElementById('gLbl').textContent=manualGain.toFixed(1)+'×';autoScale=false;document.getElementById('scaleInfo').textContent='MANUAL '+manualGain.toFixed(1)+'×'">
+    </div>
+    <div class="gain-info">
+      <b>AUTO</b> = fits to screen<br>
+      Too thick → reduce gain<br>
+      Too small → increase gain
+    </div>
+
+    <div class="sec">EXPORT</div>
+    <button id="saveBtn" onclick="saveCSV()">💾 SAVE CSV</button>
+
+    <div class="sec">LOG</div>
+    <div id="logBox"><div class="l">[INIT] Dashboard ready — PYNQ-Z2 mode</div></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════
+const SPS = 250;
+const BUF = SPS * 10;   // 10 seconds ring buffer
+const NEON='#00ffc8', BLUE='#00b8ff', ORANGE='#ff9500', RED='#ff4f4f';
+
+// ═══════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════
+let b1 = new Float32Array(BUF);
+let wi=0, tot=0;
+let paused=false, view='single', src='demo';
+let manualGain=1.0, autoScale=true;
+let scaleMultiplier=1.0;
+
+// Filters
+let F={hp:true, lp:true, notch:true, dc:true};
+let dhp_x1=0, dhp_y1=0, dlp_y1=0;
+let dn_x1=0, dn_x2=0, dn_y1=0, dn_y2=0;
+let ddc=0;
+
+// R-peak
+let lastR=0, bpms=[], rMarks=[];
+
+// Auto-scale
+let sigMin=0, sigMax=0, sigMinSlow=0, sigMaxSlow=0;
+
+// Demo
+let dT=0, dBPM=72, dTimer=null;
+
+// PYNQ polling
+let pynqTimer=null;
+let pynqConnected=false;
+let lastPynqTotal=0;
+let lastPollTime=0;
+let pollRateMs=0;
+
+// CSV recording
+let csvRows=[];  // {t, v}
+let csvT0=null;
+
+// Canvas
+const cvs=document.getElementById('cvs');
+const ctx=cvs.getContext('2d');
+
+// ═══════════════════════════════════════════
+//  CLOCK
+// ═══════════════════════════════════════════
+setInterval(()=>{
+  const n=new Date();
+  document.getElementById('clock').textContent=
+    [n.getHours(),n.getMinutes(),n.getSeconds()].map(v=>String(v).padStart(2,'0')).join(':');
+},1000);
+
+// ═══════════════════════════════════════════
+//  LOG
+// ═══════════════════════════════════════════
+function log(msg,t='l'){
+  const b=document.getElementById('logBox');
+  const d=document.createElement('div');
+  d.className=t; d.textContent=msg;
+  b.appendChild(d);
+  while(b.children.length>80) b.removeChild(b.firstChild);
+  b.scrollTop=b.scrollHeight;
+}
+
+// ═══════════════════════════════════════════
+//  DEMO ECG GENERATOR
+// ═══════════════════════════════════════════
+function ecgSamp(t, bpm){
+  const ph=((t*bpm/60)%1+1)%1;
+  let v=0;
+  if(ph>=0.08&&ph<0.20){const x=(ph-.14)/.05;v+=.15*Math.exp(-x*x*8);}
+  if(ph>=0.22&&ph<0.245){const x=(ph-.23)/.008;v-=.08*Math.exp(-x*x*5);}
+  if(ph>=0.24&&ph<0.30){const x=(ph-.258)/.007;v+=1.0*Math.exp(-x*x*8);}
+  if(ph>=0.265&&ph<0.30){const x=(ph-.278)/.007;v-=.2*Math.exp(-x*x*6);}
+  if(ph>=0.33&&ph<0.50){const x=(ph-.41)/.065;v+=.28*Math.exp(-x*x*3);}
+  v+=.015*Math.sin(2*Math.PI*.08*t)+(Math.random()-.5)*.008;
+  return v*800;
+}
+
+// ═══════════════════════════════════════════
+//  FILTERS
+// ═══════════════════════════════════════════
+function dashFilter(x){
+  let y=x;
+  if(F.dc){ddc=.999*ddc+.001*x; y=x-ddc;}
+  if(F.hp){const ny=.997*(dhp_y1+y-dhp_x1);dhp_x1=y;dhp_y1=ny;y=ny;}
+  if(F.notch){
+    const c2=Math.cos(2*Math.PI*50/SPS),r=.97;
+    const ny=y-2*c2*dn_x1+dn_x2+2*r*c2*dn_y1-r*r*dn_y2;
+    dn_x2=dn_x1;dn_x1=y;dn_y2=dn_y1;dn_y1=ny;y=ny;
+  }
+  if(F.lp){const a=.12;y=dlp_y1+a*(y-dlp_y1);dlp_y1=y;}
+  return y;
+}
+
+// ═══════════════════════════════════════════
+//  PUSH SAMPLE
+// ═══════════════════════════════════════════
+function push(rawVal){
+  if(paused) return;
+  const fv=dashFilter(rawVal);
+  b1[wi%BUF]=fv;
+
+  // Auto-scale tracking
+  if(fv>sigMax) sigMax=fv;
+  if(fv<sigMin) sigMin=fv;
+  sigMaxSlow=sigMaxSlow*.9995+sigMax*.0005;
+  sigMinSlow=sigMinSlow*.9995+sigMin*.0005;
+  sigMax*=.9995; sigMin*=.9995;
+
+  detectR(fv, wi);
+  wi++; tot++;
+
+  // CSV record
+  if(src==='pynq'){
+    if(!csvT0) csvT0=Date.now();
+    csvRows.push({t:((Date.now()-csvT0)/1000).toFixed(3), v:rawVal.toFixed(4)});
+  }
+
+  document.getElementById('sSamp').textContent=tot.toLocaleString();
+  document.getElementById('sBuf').textContent=Math.min(tot,BUF);
+  if(tot%25===0) document.getElementById('sRaw').textContent=Math.round(rawVal)+' µV';
+}
+
+// ═══════════════════════════════════════════
+//  R-PEAK DETECTION
+// ═══════════════════════════════════════════
+function detectR(v, idx){
+  const thresh=sigMaxSlow*0.60;
+  if(v>Math.max(thresh,50)&&(idx-lastR)>SPS*0.35){
+    const rr=idx-lastR;
+    if(lastR>0&&rr>0){
+      const bpm=Math.round(60/(rr/SPS));
+      if(bpm>30&&bpm<200){
+        bpms.push(bpm); if(bpms.length>8) bpms.shift();
+        const avg=Math.round(bpms.reduce((a,b)=>a+b,0)/bpms.length);
+        const el=document.getElementById('vBpm');
+        el.textContent=avg;
+        el.className='vtval'+(avg>100||avg<50?' warn':'');
+        const rrMs=Math.round(rr/SPS*1000);
+        document.getElementById('vRR').textContent=rrMs;
+        document.getElementById('sPP').textContent=rrMs+' ms';
+        rMarks.push(idx); if(rMarks.length>15) rMarks.shift();
+        const pp=Math.round(sigMaxSlow-sigMinSlow);
+        document.getElementById('vAmp').textContent=pp;
+        document.getElementById('vSNR').textContent=Math.round(20*Math.log10((pp+1)/20));
+      }
+    }
+    lastR=idx;
+  }
+}
+
+// ═══════════════════════════════════════════
+//  SCALE
+// ═══════════════════════════════════════════
+function getScale(H){
+  if(autoScale){
+    const range=sigMaxSlow-sigMinSlow;
+    if(range<10) return (H*0.3)/500;
+    return (H*0.70)/range*scaleMultiplier;
+  } else {
+    return (H/4)/500*manualGain*scaleMultiplier;
+  }
+}
+
+// ═══════════════════════════════════════════
+//  DRAW GRID
+// ═══════════════════════════════════════════
+function drawGrid(W,H,yOff=0,h=null){
+  const hh=h||H;
+  ctx.strokeStyle='rgba(0,255,200,.04)';ctx.lineWidth=.5;
+  for(let x=0;x<W;x+=20){ctx.beginPath();ctx.moveTo(x,yOff);ctx.lineTo(x,yOff+hh);ctx.stroke();}
+  for(let y=yOff;y<yOff+hh;y+=20){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  ctx.strokeStyle='rgba(0,255,200,.12)';ctx.lineWidth=.8;
+  for(let x=0;x<W;x+=100){ctx.beginPath();ctx.moveTo(x,yOff);ctx.lineTo(x,yOff+hh);ctx.stroke();}
+  for(let y=yOff;y<yOff+hh;y+=100){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+}
+
+// ═══════════════════════════════════════════
+//  DRAW SINGLE CHANNEL
+// ═══════════════════════════════════════════
+function drawSingle(W,H){
+  drawGrid(W,H);
+  ctx.strokeStyle='rgba(0,255,200,.1)';ctx.lineWidth=1;
+  ctx.setLineDash([4,10]);
+  ctx.beginPath();ctx.moveTo(0,H/2);ctx.lineTo(W,H/2);ctx.stroke();
+  ctx.setLineDash([]);
+
+  const show=Math.min(tot,BUF);
+  if(show<4) return;
+
+  const displayPts=Math.min(show,W);
+  const step=W/displayPts;
+  const mid=H/2;
+  const scale=getScale(H);
+
+  const pts=[];
+  for(let i=0;i<displayPts;i++){
+    const si=(wi-displayPts+i+BUF*100)%BUF;
+    pts.push({x:i*step, y:mid-b1[si]*scale});
+  }
+
+  // Glow layers
+  ctx.beginPath();
+  ctx.strokeStyle=NEON;ctx.lineWidth=4;ctx.globalAlpha=.07;
+  for(let i=0;i<pts.length;i++) i?ctx.lineTo(pts[i].x,pts[i].y):ctx.moveTo(pts[i].x,pts[i].y);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.strokeStyle=NEON;ctx.lineWidth=2;ctx.globalAlpha=.2;
+  for(let i=0;i<pts.length;i++) i?ctx.lineTo(pts[i].x,pts[i].y):ctx.moveTo(pts[i].x,pts[i].y);
+  ctx.stroke();
+
+  // Sharp core
+  ctx.beginPath();
+  ctx.strokeStyle=NEON;ctx.lineWidth=1.5;ctx.globalAlpha=1.0;
+  ctx.shadowColor='rgba(0,255,200,0.6)';ctx.shadowBlur=3;
+  for(let i=0;i<pts.length;i++) i?ctx.lineTo(pts[i].x,pts[i].y):ctx.moveTo(pts[i].x,pts[i].y);
+  ctx.stroke();
+  ctx.globalAlpha=1;ctx.shadowBlur=0;
+
+  // 1mV calibration bar
+  const oneMV=1000*scale;
+  if(oneMV>5&&oneMV<H/2){
+    ctx.strokeStyle='rgba(255,107,53,.7)';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(8,H-30);ctx.lineTo(8,H-30-oneMV);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(4,H-30);ctx.lineTo(12,H-30);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(4,H-30-oneMV);ctx.lineTo(12,H-30-oneMV);ctx.stroke();
+    ctx.fillStyle='rgba(255,107,53,.7)';ctx.font='10px Courier New';
+    ctx.fillText('1mV',14,H-30-oneMV/2+4);
+  }
+
+  // R-peak markers
+  rMarks.forEach(ri=>{
+    const d=(wi-1)-ri;
+    if(d<0||d>=displayPts) return;
+    const x=(displayPts-1-d)*step;
+    const y=mid-b1[ri%BUF]*scale;
+    ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);
+    ctx.fillStyle=RED;ctx.shadowColor=RED;ctx.shadowBlur=8;ctx.fill();
+    ctx.shadowBlur=0;
+  });
+
+  // Source label
+  ctx.fillStyle='rgba(0,255,200,.3)';ctx.font='11px Courier New';
+  ctx.fillText(src==='pynq'?'● PYNQ-Z2 LIVE — ADS1299 CH1':'● DEMO MODE',W-200,16);
+
+  // Sweep cursor
+  const cx=(wi%displayPts)*step;
+  ctx.strokeStyle='rgba(0,255,200,.15)';ctx.lineWidth=1;
+  ctx.setLineDash([2,5]);
+  ctx.beginPath();ctx.moveTo(cx,0);ctx.lineTo(cx,H);ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// ═══════════════════════════════════════════
+//  DRAW FFT
+// ═══════════════════════════════════════════
+function drawFFT(W,H){
+  drawGrid(W,H);
+  const N=256;
+  if(tot<N){
+    ctx.fillStyle='#3a7070';ctx.font='14px Courier New';
+    ctx.fillText('Collecting... ('+tot+'/'+N+')',20,H/2);
+    return;
+  }
+  const samps=[];
+  for(let i=0;i<N;i++) samps.push(b1[(wi-N+i+BUF*100)%BUF]);
+  const mag=new Float32Array(N/2);
+  for(let k=1;k<N/2;k++){
+    let re=0,im=0;
+    for(let n=0;n<N;n++){
+      const w=.5*(1-Math.cos(2*Math.PI*n/(N-1)));
+      re+=samps[n]*w*Math.cos(2*Math.PI*k*n/N);
+      im-=samps[n]*w*Math.sin(2*Math.PI*k*n/N);
+    }
+    mag[k]=Math.sqrt(re*re+im*im)/N;
+  }
+  const maxF=80,bW=SPS/N,maxB=Math.floor(maxF/bW);
+  let mx=1; for(let k=1;k<maxB;k++) if(mag[k]>mx) mx=mag[k];
+  for(let k=1;k<maxB;k++){
+    const freq=k*bW,x=(freq/maxF)*W,bH=(mag[k]/mx)*(H-35);
+    ctx.fillStyle=(freq>=48&&freq<=52)?RED:BLUE;
+    ctx.shadowColor=ctx.fillStyle;ctx.shadowBlur=3;
+    ctx.fillRect(x,H-35-bH,Math.max(2,W/maxB-1),bH);
+  }
+  ctx.shadowBlur=0;
+  ctx.fillStyle='rgba(0,255,200,.45)';ctx.font='10px Courier New';
+  for(let f=0;f<=maxF;f+=10) ctx.fillText(f+'Hz',(f/maxF)*W+2,H-8);
+  const nx=(50/maxF)*W;
+  ctx.strokeStyle=RED;ctx.lineWidth=1;ctx.setLineDash([3,4]);
+  ctx.beginPath();ctx.moveTo(nx,0);ctx.lineTo(nx,H-30);ctx.stroke();
+  ctx.setLineDash([]);ctx.fillStyle=RED;ctx.fillText('50Hz',nx+2,14);
+  ctx.fillStyle='rgba(0,255,200,.3)';ctx.fillText('FFT SPECTRUM — ADS1299 CH1',8,14);
+}
+
+// ═══════════════════════════════════════════
+//  RENDER LOOP
+// ═══════════════════════════════════════════
+function render(){
+  const wrap=document.getElementById('cwrap');
+  const W=cvs.width=wrap.clientWidth;
+  const H=cvs.height=wrap.clientHeight;
+  ctx.clearRect(0,0,W,H);
+  if(view==='single') drawSingle(W,H);
+  else                drawFFT(W,H);
+  requestAnimationFrame(render);
+}
+
+// ═══════════════════════════════════════════
+//  DEMO PUMP
+// ═══════════════════════════════════════════
+function startDemo(){
+  clearInterval(dTimer);
+  dTimer=setInterval(()=>{
+    if(src!=='demo') return;
+    for(let i=0;i<5;i++){dT+=1/SPS;push(ecgSamp(dT,dBPM));}
+  },20);
+}
+
+// ═══════════════════════════════════════════
+//  PYNQ HTTP POLLING
+//  Polls /data endpoint of ecg_monitor.py web server
+//  URL: http://PYNQ_IP:8080/data
+//  Returns: {"ch1": [...floats...], "total": N}
+// ═══════════════════════════════════════════
+let pynqURL='';
+let pynqPollInterval=80;  // ms — matches server's ~12fps
+
+async function pollPynq(){
+  if(src!=='pynq') return;
+  const t0=performance.now();
+  try{
+    const resp=await fetch(pynqURL+'/data',{
+      signal: AbortSignal.timeout(3000)
+    });
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    const d=await resp.json();
+
+    const dt=performance.now()-t0;
+    pollRateMs=Math.round(dt);
+    document.getElementById('pollRate').textContent=pollRateMs+' ms';
+
+    // d.ch1 is the rolling buffer (last ~5s), d.total is cumulative count
+    const pts=d.ch1||[];
+    const newTotal=d.total||0;
+
+    // Only push NEW samples since last poll
+    const newCount=newTotal-lastPynqTotal;
+    lastPynqTotal=newTotal;
+    document.getElementById('sPynqTotal').textContent=newTotal.toLocaleString();
+
+    if(newCount>0&&pts.length>0){
+      // Take the last newCount samples from the buffer
+      const start=Math.max(0,pts.length-newCount);
+      for(let i=start;i<pts.length;i++){
+        push(pts[i]);
+      }
+    }
+
+    // Mark connected
+    if(!pynqConnected){
+      pynqConnected=true;
+      document.getElementById('sDot').className='live';
+      document.getElementById('sLbl').textContent='PYNQ LIVE';
+      document.getElementById('connStatus').textContent='● CONNECTED';
+      document.getElementById('connStatus').className='ok';
+      document.getElementById('cBtn').textContent='⏹ DISCONNECT';
+      document.getElementById('cBtn').className='disc';
+      log('[PYNQ] Connected — receiving data','i');
+    }
+
+  }catch(e){
+    if(pynqConnected){
+      document.getElementById('sDot').className='err';
+      document.getElementById('sLbl').textContent='PYNQ ERROR';
+      document.getElementById('connStatus').textContent='● '+e.message.toUpperCase();
+      document.getElementById('connStatus').className='err';
+      log('[ERROR] '+e.message,'w');
+    }
+  }
+}
+
+function startPynqPolling(){
+  clearInterval(pynqTimer);
+  pynqTimer=setInterval(pollPynq, pynqPollInterval);
+  pollPynq(); // immediate first poll
+}
+
+function stopPynqPolling(){
+  clearInterval(pynqTimer);
+  pynqTimer=null;
+  pynqConnected=false;
+  lastPynqTotal=0;
+  document.getElementById('sDot').className='';
+  document.getElementById('sLbl').textContent='DEMO MODE';
+  document.getElementById('connStatus').textContent='● DISCONNECTED';
+  document.getElementById('connStatus').className='';
+  document.getElementById('cBtn').textContent='⚡ CONNECT PYNQ';
+  document.getElementById('cBtn').className='';
+  document.getElementById('pollRate').textContent='-- ms';
+  document.getElementById('sPynqTotal').textContent='--';
+}
+
+function togglePynq(){
+  if(src==='pynq'){
+    // Disconnect
+    src='demo';
+    stopPynqPolling();
+    startDemo();
+    document.getElementById('bDemo').classList.add('on');
+    document.getElementById('bPynq').classList.remove('on');
+    log('[PYNQ] Disconnected','i');
+  } else {
+    srcPynq(document.getElementById('bPynq'));
+  }
+}
+
+// ═══════════════════════════════════════════
+//  SOURCE SWITCHERS
+// ═══════════════════════════════════════════
+function srcDemo(btn){
+  if(src==='pynq'){
+    src='demo';
+    stopPynqPolling();
+    startDemo();
+  }
+  document.getElementById('bDemo').classList.add('on');
+  document.getElementById('bPynq').classList.remove('on');
+}
+
+function srcPynq(btn){
+  const ip=document.getElementById('pynqIP').value.trim()||'192.168.2.99';
+  const port=document.getElementById('pynqPort').value.trim()||'8080';
+  pynqURL='http://'+ip+':'+port;
+
+  clearInterval(dTimer);
+  src='pynq';
+  csvRows=[];
+  csvT0=null;
+  document.getElementById('bPynq').classList.add('on');
+  document.getElementById('bDemo').classList.remove('on');
+  document.getElementById('connStatus').textContent='● CONNECTING...';
+  document.getElementById('connStatus').className='';
+  log('[PYNQ] Connecting to '+pynqURL,'i');
+  startPynqPolling();
+}
+
+// ═══════════════════════════════════════════
+//  CSV SAVE (browser download)
+// ═══════════════════════════════════════════
+function saveCSV(){
+  if(csvRows.length===0){
+    // Save from buffer if in demo mode
+    const rows=['sample,t_s,ch1_uv'];
+    const show=Math.min(tot,BUF);
+    for(let i=0;i<show;i++){
+      const si=(wi-show+i+BUF*100)%BUF;
+      rows.push(i+','+(i/SPS).toFixed(3)+','+b1[si].toFixed(4));
+    }
+    download('ecg_demo.csv',rows.join('\n'));
+    log('[CSV] Saved '+show+' demo samples','i');
+    return;
+  }
+  const rows=['sample,t_s,ch1_uv'];
+  csvRows.forEach((r,i)=>rows.push(i+','+r.t+','+r.v));
+  download('ecg_pynq_'+Date.now()+'.csv',rows.join('\n'));
+  log('[CSV] Saved '+csvRows.length+' PYNQ samples','i');
+}
+
+function download(name,text){
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(text);
+  a.download=name; a.click();
+}
+
+// ═══════════════════════════════════════════
+//  UI CONTROLS
+// ═══════════════════════════════════════════
+function setView(v,btn){
+  view=v;
+  ['bSingle','bFFT'].forEach(id=>document.getElementById(id).classList.remove('on'));
+  btn.classList.add('on');
+}
+function doPause(){
+  paused=!paused;
+  document.getElementById('bPause').textContent=paused?'▶ RESUME':'⏸ PAUSE';
+}
+function doClear(){
+  b1.fill(0);wi=0;tot=0;bpms=[];rMarks=[];lastR=0;
+  sigMin=0;sigMax=0;sigMinSlow=0;sigMaxSlow=0;
+  csvRows=[];csvT0=null;lastPynqTotal=0;
+  ['sSamp','sBuf'].forEach(id=>document.getElementById(id).textContent='0');
+  ['vBpm','vAmp','vRR','vSNR'].forEach(id=>document.getElementById(id).textContent='--');
+  document.getElementById('sPP').textContent='-- ms';
+  document.getElementById('sRaw').textContent='-- µV';
+  log('[INFO] Buffer cleared','i');
+}
+function adjScale(m,btn){
+  scaleMultiplier=m;
+  autoScale=true;
+  document.getElementById('scaleInfo').textContent=m===1?'AUTO SCALE':'SCALE ×'+m;
+}
+function togF(f){
+  F[f]=!F[f];const on=F[f];
+  document.getElementById('fr-'+f).className='frow'+(on?' on':'');
+  document.getElementById('fn-'+f).className='fname'+(on?' on':'');
+  document.getElementById('fp-'+f).className='pill'+(on?' on':'');
+  const parts=[];
+  if(F.hp)parts.push('HP');if(F.lp)parts.push('LP');
+  if(F.notch)parts.push('NOTCH');if(F.dc)parts.push('DC');
+  document.getElementById('sFilt').textContent=parts.join(' · ')||'ALL OFF';
+  log('[FILTER] '+f.toUpperCase()+' '+(on?'ON':'OFF'),'i');
+}
+
+// ═══════════════════════════════════════════
+//  START
+// ═══════════════════════════════════════════
+log('[INFO] Demo ECG @ 72 BPM — click PYNQ LIVE to connect','i');
+log('[INFO] Ensure ecg_monitor.py is running on PYNQ-Z2','i');
+startDemo();
+render();
+</script>
+</body>
+</html>
